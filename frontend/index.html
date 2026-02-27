@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AFRA — Alternative Finance Risk Aggregator</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.1/dist/chartjs-chart-financial.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ─── Reset & Variables ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0e1a;
+  --bg2:       #0d1221;
+  --card:      #111827;
+  --card2:     #161e2e;
+  --border:    #1e2a3d;
+  --accent:    #00d4aa;
+  --accent2:   #00b899;
+  --red:       #ef4444;
+  --green:     #22c55e;
+  --yellow:    #f59e0b;
+  --muted:     #4b5e78;
+  --text:      #e2e8f0;
+  --text2:     #94a3b8;
+  --text3:     #64748b;
+  --mono:      'JetBrains Mono', monospace;
+  --sans:      'IBM Plex Sans', sans-serif;
+  --glow:      0 0 20px rgba(0,212,170,0.15);
+  --glow-red:  0 0 20px rgba(239,68,68,0.2);
+}
+
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; }
+
+/* ─── Layout ─────────────────────────────────────────────────────────── */
+#app { display: grid; grid-template-rows: 48px 1fr; height: 100vh; }
+
+/* Header */
+#header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; background: var(--card); border-bottom: 1px solid var(--border);
+  z-index: 100;
+}
+#header h1 { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: 3px; color: var(--accent); }
+#header h1 span { color: var(--text3); font-weight: 300; }
+.header-right { display: flex; align-items: center; gap: 16px; }
+#clock { font-family: var(--mono); font-size: 12px; color: var(--text3); }
+.badge {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  padding: 3px 8px; border-radius: 3px; letter-spacing: 1px;
+}
+.badge.live    { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+.badge.sim     { background: rgba(245,158,11,.15); color: var(--yellow); border: 1px solid rgba(245,158,11,.3); }
+.badge.disc    { background: rgba(239,68,68,.15);  color: var(--red);   border: 1px solid rgba(239,68,68,.3); }
+
+/* Main area */
+#main { display: grid; grid-template-columns: 56px 1fr; overflow: hidden; }
+
+/* Sidebar */
+#sidebar {
+  background: var(--card); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px;
+}
+.nav-btn {
+  width: 40px; height: 40px; border: none; border-radius: 8px;
+  background: transparent; color: var(--muted); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; transition: all .2s; position: relative;
+}
+.nav-btn svg { width: 18px; height: 18px; }
+.nav-btn span { font-size: 7px; font-family: var(--mono); letter-spacing: .5px; text-transform: uppercase; }
+.nav-btn:hover { background: var(--card2); color: var(--text); }
+.nav-btn.active { background: rgba(0,212,170,.1); color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); border-radius: 0 8px 8px 0; }
+
+/* Content panels */
+#panels { overflow-y: auto; }
+.panel { display: none; padding: 20px; height: 100%; overflow-y: auto; }
+.panel.active { display: block; }
+
+/* ─── Shared Components ──────────────────────────────────────────────── */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px;
+}
+.card.glow { box-shadow: var(--glow); border-color: rgba(0,212,170,.3); }
+
+.section-title {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  color: var(--text3); letter-spacing: 2px; text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.pos { color: var(--green); }
+.neg { color: var(--red); }
+.neu { color: var(--text2); }
+
+/* ─── KPI Cards ──────────────────────────────────────────────────────── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px; margin-bottom: 16px;
+}
+.kpi-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px; transition: all .3s;
+}
+.kpi-card:hover { border-color: var(--accent); box-shadow: var(--glow); }
+.kpi-label { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+.kpi-value { font-family: var(--mono); font-size: 22px; font-weight: 700; line-height: 1; transition: color .3s; }
+.kpi-sub { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 4px; }
+
+/* ─── Alerts ─────────────────────────────────────────────────────────── */
+#alert-feed {
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 12px; max-height: 120px; overflow-y: auto;
+  font-family: var(--mono); font-size: 11px;
+}
+.alert-item {
+  padding: 4px 0; border-bottom: 1px solid var(--border);
+  display: flex; gap: 10px; align-items: baseline;
+}
+.alert-item:last-child { border-bottom: none; }
+.alert-time { color: var(--text3); font-size: 10px; flex-shrink: 0; }
+.alert-level-info     { color: var(--accent); }
+.alert-level-warn     { color: var(--yellow); }
+.alert-level-critical { color: var(--red); animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: .4; } }
+
+/* ─── Ticker Strip ───────────────────────────────────────────────────── */
+#ticker-strip {
+  display: flex; gap: 0; overflow: hidden;
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: 6px; margin-bottom: 16px;
+}
+.ticker-item {
+  flex: 1; padding: 10px 14px; border-right: 1px solid var(--border);
+  cursor: pointer; transition: background .2s;
+}
+.ticker-item:last-child { border-right: none; }
+.ticker-item:hover, .ticker-item.active { background: rgba(0,212,170,.08); }
+.ticker-sym { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--text); }
+.ticker-price { font-family: var(--mono); font-size: 13px; font-weight: 500; margin-top: 2px; }
+.ticker-chg { font-family: var(--mono); font-size: 10px; margin-top: 1px; }
+
+/* ─── Chart Containers ───────────────────────────────────────────────── */
+.chart-wrap {
+  position: relative; background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px;
+}
+.chart-wrap canvas { display: block; }
+
+/* ─── Tables ─────────────────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-family: var(--mono); font-size: 9px; color: var(--text3);
+  letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
+  text-align: left; cursor: pointer; user-select: none;
+}
+.data-table th:hover { color: var(--accent); }
+.data-table td {
+  font-family: var(--mono); font-size: 12px; padding: 9px 10px;
+  border-bottom: 1px solid rgba(30,42,61,.6);
+}
+.data-table tr:hover td { background: rgba(0,212,170,.04); cursor: pointer; }
+.data-table tr.selected td { background: rgba(0,212,170,.08); border-left: 2px solid var(--accent); }
+
+.status-pill {
+  display: inline-block; padding: 2px 7px; border-radius: 10px;
+  font-size: 9px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+}
+.status-open    { background: rgba(0,212,170,.15); color: var(--accent); }
+.status-closed  { background: rgba(100,116,139,.15); color: var(--text3); }
+.status-pending { background: rgba(245,158,11,.15); color: var(--yellow); }
+
+.dir-long  { color: var(--green); }
+.dir-short { color: var(--red); }
+
+/* ─── Buttons ────────────────────────────────────────────────────────── */
+.btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 8px 16px; border-radius: 5px; border: none; cursor: pointer;
+  letter-spacing: .5px; transition: all .2s;
+}
+.btn-primary { background: var(--accent); color: #000; }
+.btn-primary:hover { background: var(--accent2); box-shadow: var(--glow); }
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+.btn-danger { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+.btn-danger:hover { background: rgba(239,68,68,.25); }
+
+/* ─── Modal ──────────────────────────────────────────────────────────── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+  z-index: 1000; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 24px; width: 480px; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 25px 80px rgba(0,0,0,.6);
+}
+.modal h2 { font-family: var(--mono); font-size: 13px; color: var(--accent); letter-spacing: 2px; margin-bottom: 20px; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group.full { grid-column: 1 / -1; }
+.form-group label { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 1.5px; text-transform: uppercase; }
+.form-group input, .form-group select {
+  background: var(--bg2); border: 1px solid var(--border);
+  color: var(--text); font-family: var(--mono); font-size: 12px;
+  padding: 8px 10px; border-radius: 5px; outline: none; transition: border-color .2s;
+}
+.form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+
+.direction-toggle { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+.direction-toggle button {
+  flex: 1; padding: 8px; border: none; background: transparent;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  cursor: pointer; transition: all .2s; color: var(--text3);
+}
+.direction-toggle button.active.long { background: rgba(34,197,94,.2); color: var(--green); }
+.direction-toggle button.active.short { background: rgba(239,68,68,.2); color: var(--red); }
+
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+/* ─── Greeks Sidebar ─────────────────────────────────────────────────── */
+#greeks-panel {
+  position: fixed; right: 0; top: 48px; bottom: 0; width: 280px;
+  background: var(--card); border-left: 1px solid var(--border);
+  padding: 20px; transform: translateX(100%); transition: transform .3s ease;
+  z-index: 50; overflow-y: auto;
+}
+#greeks-panel.open { transform: translateX(0); box-shadow: var(--glow); }
+.greeks-close { float: right; background: none; border: none; color: var(--text3); cursor: pointer; font-size: 18px; }
+.greek-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.greek-name { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+.greek-val { font-family: var(--mono); font-size: 14px; font-weight: 700; }
+
+/* ─── Options Chain ──────────────────────────────────────────────────── */
+.chain-grid {
+  display: grid; grid-template-columns: 1fr 60px 1fr;
+  gap: 0; font-family: var(--mono); font-size: 11px;
+}
+.chain-header { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; padding: 6px 8px; background: var(--card2); }
+.chain-row { display: contents; cursor: pointer; }
+.chain-row > div { padding: 7px 8px; border-bottom: 1px solid rgba(30,42,61,.5); transition: background .15s; }
+.chain-row:hover > div { background: rgba(0,212,170,.05); }
+.chain-strike { background: var(--card2); text-align: center; font-weight: 700; color: var(--text); }
+.chain-call { text-align: right; }
+.chain-put { text-align: left; }
+.itm-call { background: rgba(0,212,170,.04); }
+.itm-put  { background: rgba(239,68,68,.04); }
+.chain-selected > div { background: rgba(0,212,170,.1) !important; }
+
+/* ─── Scrollbars ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ─── Misc ───────────────────────────────────────────────────────────── */
+.row { display: flex; gap: 16px; margin-bottom: 16px; align-items: flex-start; }
+.row > * { flex: 1; }
+select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%234b5e78'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px !important; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.empty-state { text-align: center; padding: 40px; color: var(--text3); font-family: var(--mono); font-size: 12px; }
+.spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header id="header">
+    <h1>AFRA <span>// ALTERNATIVE FINANCE RISK AGGREGATOR</span></h1>
+    <div class="header-right">
+      <span id="clock" class="num">--:--:--</span>
+      <span id="conn-badge" class="badge sim">SIMULATED</span>
+    </div>
+  </header>
+
+  <!-- ── Main ───────────────────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- Sidebar nav -->
+    <nav id="sidebar">
+      <button class="nav-btn active" data-panel="portfolio" title="Portfolio Overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>PORT</span>
+      </button>
+      <button class="nav-btn" data-panel="market" title="Market Watch">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span>MKT</span>
+      </button>
+      <button class="nav-btn" data-panel="trades" title="Trades">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <span>TRD</span>
+      </button>
+      <button class="nav-btn" data-panel="options" title="Options Chain">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M9 12h6M12 9v6"/></svg>
+        <span>OPT</span>
+      </button>
+    </nav>
+
+    <!-- Content panels -->
+    <div id="panels">
+
+      <!-- ── Portfolio Panel ──────────────────────────────────────────── -->
+      <div class="panel active" id="panel-portfolio">
+        <p class="section-title">Portfolio Overview</p>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">Open Positions</div>
+            <div class="kpi-value num" id="kpi-positions">—</div>
+            <div class="kpi-sub">active trades</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Net P&amp;L</div>
+            <div class="kpi-value num" id="kpi-pnl">—</div>
+            <div class="kpi-sub" id="kpi-pnl-sub">&nbsp;</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Net Delta</div>
+            <div class="kpi-value num" id="kpi-delta">—</div>
+            <div class="kpi-sub">directional exposure</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Net Theta</div>
+            <div class="kpi-value num" id="kpi-theta">—</div>
+            <div class="kpi-sub">$/day decay</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">VaR 95%</div>
+            <div class="kpi-value num" id="kpi-var">—</div>
+            <div class="kpi-sub">1-day parametric</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Win Rate</div>
+            <div class="kpi-value num" id="kpi-winrate">—</div>
+            <div class="kpi-sub">of closed trades</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Sharpe Ratio</div>
+            <div class="kpi-value num" id="kpi-sharpe">—</div>
+            <div class="kpi-sub">risk-adjusted</div>
+          </div>
+        </div>
+
+        <p class="section-title">Risk Alerts</p>
+        <div id="alert-feed"><div class="empty-state">No alerts</div></div>
+      </div>
+
+      <!-- ── Market Watch Panel ──────────────────────────────────────── -->
+      <div class="panel" id="panel-market">
+        <p class="section-title">Market Watch</p>
+        <div id="ticker-strip">
+          <!-- populated by JS -->
+        </div>
+        <div class="row" style="align-items:stretch">
+          <div class="chart-wrap" style="flex:3">
+            <div class="flex-between">
+              <span class="section-title" style="margin:0">OHLCV</span>
+              <select id="chart-symbol-sel" style="background:var(--bg2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 28px 4px 8px;border-radius:4px;outline:none">
+                <option>SPY</option><option>QQQ</option><option>AAPL</option>
+                <option>TSLA</option><option>NVDA</option><option>BTC</option>
+                <option>ETH</option><option>GLD</option>
+              </select>
+            </div>
+            <div style="height:300px;margin-top:12px"><canvas id="ohlcv-chart"></canvas></div>
+          </div>
+          <div class="chart-wrap" style="flex:1;display:flex;flex-direction:column;gap:16px">
+            <span class="section-title" style="margin:0">LIVE PRICE</span>
+            <div id="price-display" style="text-align:center;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center">
+              <div id="price-symbol" style="font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:2px">—</div>
+              <div id="price-value" style="font-family:var(--mono);font-size:40px;font-weight:700;color:var(--accent);margin:8px 0;transition:color .3s">—</div>
+              <div id="price-change" style="font-family:var(--mono);font-size:13px">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Trades Panel ────────────────────────────────────────────── -->
+      <div class="panel" id="panel-trades">
+        <div class="flex-between">
+          <p class="section-title" style="margin:0">Trade Book</p>
+          <button class="btn btn-primary" onclick="openTradeModal()">+ New Trade</button>
+        </div>
+
+        <div class="card" style="overflow:auto">
+          <table class="data-table" id="trades-table">
+            <thead>
+              <tr>
+                <th onclick="sortTable('symbol')">Symbol ↕</th>
+                <th onclick="sortTable('direction')">Dir</th>
+                <th onclick="sortTable('asset_class')">Type</th>
+                <th onclick="sortTable('entry_price')">Entry</th>
+                <th onclick="sortTable('current_price')">Current</th>
+                <th onclick="sortTable('pnl')">P&L $</th>
+                <th onclick="sortTable('pnl_pct')">P&L %</th>
+                <th onclick="sortTable('status')">Status</th>
+              </tr>
+            </thead>
+            <tbody id="trades-body">
+              <tr><td colspan="8" class="empty-state">Loading trades…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Options Chain Panel ─────────────────────────────────────── -->
+      <div class="panel" id="panel-options">
+        <div class="flex-between">
+          <p class="section-title" style="margin:0">Options Chain</p>
+          <div style="display:flex;gap:10px;align-items:center">
+            <select id="opt-symbol-sel" style="background:var(--bg2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 28px 5px 8px;border-radius:4px;outline:none" onchange="loadOptionsChain()">
+              <option>SPY</option><option>QQQ</option><option>AAPL</option>
+              <option>TSLA</option><option>NVDA</option><option>BTC</option>
+              <option>ETH</option><option>GLD</option>
+            </select>
+            <select id="opt-expiry-sel" style="background:var(--bg2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 28px 5px 8px;border-radius:4px;outline:none" onchange="filterChainByExpiry()">
+              <option value="">All Expiries</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row" style="align-items:flex-start">
+          <div style="flex:2;overflow:auto">
+            <div class="chain-grid" id="options-chain">
+              <div class="chain-header" style="text-align:right">Calls</div>
+              <div class="chain-header" style="text-align:center">Strike</div>
+              <div class="chain-header">Puts</div>
+            </div>
+          </div>
+          <div style="flex:1" id="decay-panel">
+            <div class="card">
+              <p class="section-title">Theta Decay Preview</p>
+              <div id="decay-placeholder" class="empty-state" style="padding:20px">Click a contract to view decay</div>
+              <canvas id="decay-chart" style="display:none"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /panels -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- ── Greeks Sidebar ──────────────────────────────────────────────────── -->
+<div id="greeks-panel">
+  <button class="greeks-close" onclick="closeGreeks()">✕</button>
+  <p class="section-title" style="margin-bottom:16px">OPTIONS GREEKS</p>
+  <div id="greeks-content">
+    <div class="greek-row"><span class="greek-name">Symbol</span><span class="greek-val" id="g-symbol">—</span></div>
+    <div class="greek-row"><span class="greek-name">Strike</span><span class="greek-val" id="g-strike">—</span></div>
+    <div class="greek-row"><span class="greek-name">Expiry</span><span class="greek-val" id="g-expiry">—</span></div>
+    <div class="greek-row"><span class="greek-name">Δ Delta</span><span class="greek-val" id="g-delta">—</span></div>
+    <div class="greek-row"><span class="greek-name">Γ Gamma</span><span class="greek-val" id="g-gamma">—</span></div>
+    <div class="greek-row"><span class="greek-name">Θ Theta/day</span><span class="greek-val neg" id="g-theta">—</span></div>
+    <div class="greek-row"><span class="greek-name">ν Vega</span><span class="greek-val" id="g-vega">—</span></div>
+    <div class="greek-row"><span class="greek-name">ρ Rho</span><span class="greek-val" id="g-rho">—</span></div>
+    <div class="greek-row"><span class="greek-name">IV</span><span class="greek-val" id="g-iv">—</span></div>
+    <div class="greek-row"><span class="greek-name">P&L</span><span class="greek-val" id="g-pnl">—</span></div>
+  </div>
+</div>
+
+<!-- ── New Trade Modal ─────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="trade-modal">
+  <div class="modal">
+    <h2>// NEW TRADE</h2>
+    <form id="trade-form" onsubmit="submitTrade(event)">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Symbol</label>
+          <input type="text" id="f-symbol" placeholder="e.g. AAPL" required />
+        </div>
+        <div class="form-group">
+          <label>Asset Class</label>
+          <select id="f-asset-class" onchange="toggleOptionsFields()">
+            <option value="equity">Equity</option>
+            <option value="option">Option</option>
+            <option value="crypto">Crypto</option>
+            <option value="forex">Forex</option>
+            <option value="future">Future</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>Direction</label>
+          <div class="direction-toggle">
+            <button type="button" class="active long" id="dir-long" onclick="setDirection('long')">▲ LONG</button>
+            <button type="button" id="dir-short" onclick="setDirection('short')">▼ SHORT</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Entry Price</label>
+          <input type="number" id="f-entry" step="0.01" placeholder="0.00" required />
+        </div>
+        <div class="form-group">
+          <label>Quantity</label>
+          <input type="number" id="f-qty" step="0.01" placeholder="1" required />
+        </div>
+        <div class="form-group">
+          <label>Stop Loss (optional)</label>
+          <input type="number" id="f-stop" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label>Take Profit (optional)</label>
+          <input type="number" id="f-tp" step="0.01" placeholder="0.00" />
+        </div>
+        <!-- Options fields -->
+        <div class="form-group" id="opt-fields" style="display:contents">
+          <div class="form-group" id="f-strike-group" style="display:none">
+            <label>Strike</label>
+            <input type="number" id="f-strike" step="0.5" placeholder="0.00" />
+          </div>
+          <div class="form-group" id="f-expiry-group" style="display:none">
+            <label>Expiry (YYYY-MM-DD)</label>
+            <input type="text" id="f-expiry" placeholder="2025-06-20" />
+          </div>
+          <div class="form-group" id="f-opttype-group" style="display:none">
+            <label>Option Type</label>
+            <select id="f-opttype"><option value="call">Call</option><option value="put">Put</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeTradeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="submit-btn">Submit Trade</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   AFRA Dashboard — All JavaScript
+   ============================================================ */
+
+const API = '/api/v1';
+
+// ─── State ────────────────────────────────────────────────────────────────
+const state = {
+  activePanel: 'portfolio',
+  direction: 'long',
+  trades: [],
+  sortKey: 'symbol',
+  sortAsc: true,
+  optionsData: [],
+  optionsExpiry: '',
+  priceSSE: null,
+  portfolioSSE: null,
+  alertSSE: null,
+  ohlcvChart: null,
+  decayChart: null,
+  tickerPrices: {},
+  selectedChain: null,
+};
+
+// ─── Clock ────────────────────────────────────────────────────────────────
+function startClock() {
+  function tick() {
+    const now = new Date();
+    document.getElementById('clock').textContent =
+      now.toISOString().slice(11, 19) + ' UTC';
+  }
+  tick();
+  setInterval(tick, 1000);
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const panel = btn.dataset.panel;
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + panel).classList.add('active');
+    state.activePanel = panel;
+    if (panel === 'trades') loadTrades();
+    if (panel === 'options') loadOptionsChain();
+    if (panel === 'market') loadOHLCV();
+  });
+});
+
+// ─── SSE Helpers ──────────────────────────────────────────────────────────
+function connectSSE(url, onMsg, onErr) {
+  const es = new EventSource(url);
+  es.onmessage = e => {
+    try { onMsg(JSON.parse(e.data)); } catch (_) {}
+  };
+  es.onerror = () => { onErr && onErr(); };
+  return es;
+}
+
+function setBadge(mode) {
+  const b = document.getElementById('conn-badge');
+  b.className = 'badge ' + mode;
+  b.textContent = mode === 'live' ? 'LIVE' : mode === 'sim' ? 'SIMULATED' : 'DISCONNECTED';
+}
+
+// ─── Portfolio SSE ────────────────────────────────────────────────────────
+function connectPortfolioSSE() {
+  state.portfolioSSE = connectSSE(
+    API + '/risk/stream/portfolio',
+    data => updateKPIs(data),
+    () => setBadge('disc'),
+  );
+}
+
+function connectAlertSSE() {
+  state.alertSSE = connectSSE(
+    API + '/risk/stream/alerts',
+    data => addAlert(data),
+    () => {},
+  );
+}
+
+function updateKPIs(d) {
+  setBadge('sim');
+  setKPI('kpi-positions', d.open_positions, '', '');
+  const pnl = d.net_pnl || 0;
+  setKPI('kpi-pnl', '$' + fmt(Math.abs(pnl)), pnl >= 0 ? 'pos' : 'neg', '');
+  const delta = d.net_delta || 0;
+  setKPI('kpi-delta', fmtN(delta, 2), delta >= 0 ? 'pos' : 'neg', '');
+  const theta = d.net_theta || 0;
+  setKPI('kpi-theta', fmtN(theta, 2), theta >= 0 ? 'pos' : 'neg', '');
+  setKPI('kpi-var', '$' + fmt(d.portfolio_var_95 || 0), 'neg', '');
+  setKPI('kpi-winrate', (d.win_rate || 0).toFixed(1) + '%', '', '');
+  setKPI('kpi-sharpe', (d.sharpe_ratio || 0).toFixed(3), '', '');
+}
+
+function setKPI(id, value, cls, sub) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = value; el.className = 'kpi-value num ' + cls; }
+}
+
+function addAlert(data) {
+  const feed = document.getElementById('alert-feed');
+  const empties = feed.querySelectorAll('.empty-state');
+  empties.forEach(e => e.remove());
+
+  const item = document.createElement('div');
+  item.className = 'alert-item';
+  const t = new Date(data.timestamp * 1000).toISOString().slice(11, 19);
+  item.innerHTML = `
+    <span class="alert-time">${t}</span>
+    <span class="alert-level-${data.level}">[${data.level.toUpperCase()}]</span>
+    <span>${data.message}</span>`;
+  feed.insertBefore(item, feed.firstChild);
+
+  // Cap at 20 alerts
+  while (feed.children.length > 20) feed.removeChild(feed.lastChild);
+}
+
+// ─── Price SSE ────────────────────────────────────────────────────────────
+function connectPriceSSE() {
+  state.priceSSE = connectSSE(
+    API + '/market/stream/prices',
+    data => {
+      if (data.type === 'snapshot' && data.data) {
+        Object.entries(data.data).forEach(([sym, info]) => {
+          state.tickerPrices[sym] = info;
+          updateTickerItem(sym, info);
+          // Update live price display if this symbol is selected
+          const sel = document.getElementById('chart-symbol-sel');
+          if (sel && sel.value === sym) updatePriceDisplay(sym, info);
+        });
+      }
+    },
+    () => {},
+  );
+}
+
+function renderTickerStrip() {
+  const symbols = ['SPY','QQQ','AAPL','TSLA','NVDA','BTC','ETH','GLD'];
+  const strip = document.getElementById('ticker-strip');
+  strip.innerHTML = '';
+  symbols.forEach(sym => {
+    const item = document.createElement('div');
+    item.className = 'ticker-item';
+    item.id = 'ticker-' + sym;
+    item.innerHTML = `
+      <div class="ticker-sym">${sym}</div>
+      <div class="ticker-price num" id="tp-${sym}">—</div>
+      <div class="ticker-chg num" id="tc-${sym}">—</div>`;
+    item.onclick = () => {
+      document.querySelectorAll('.ticker-item').forEach(t => t.classList.remove('active'));
+      item.classList.add('active');
+      document.getElementById('chart-symbol-sel').value = sym;
+      loadOHLCV();
+      const info = state.tickerPrices[sym];
+      if (info) updatePriceDisplay(sym, info);
+    };
+    strip.appendChild(item);
+  });
+}
+
+function updateTickerItem(sym, info) {
+  const tp = document.getElementById('tp-' + sym);
+  const tc = document.getElementById('tc-' + sym);
+  if (!tp) return;
+  tp.textContent = fmtPrice(info.price);
+  const chg = info.change_pct || 0;
+  tc.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+  tc.className = 'ticker-chg num ' + (chg >= 0 ? 'pos' : 'neg');
+}
+
+function updatePriceDisplay(sym, info) {
+  document.getElementById('price-symbol').textContent = sym;
+  const v = document.getElementById('price-value');
+  v.textContent = fmtPrice(info.price);
+  const chg = info.change_pct || 0;
+  document.getElementById('price-change').textContent =
+    (chg >= 0 ? '▲ +' : '▼ ') + chg.toFixed(2) + '%';
+  document.getElementById('price-change').className = chg >= 0 ? 'pos num' : 'neg num';
+  v.style.color = chg >= 0 ? 'var(--green)' : 'var(--red)';
+  setTimeout(() => { v.style.color = 'var(--accent)'; }, 500);
+}
+
+// ─── OHLCV Chart ──────────────────────────────────────────────────────────
+async function loadOHLCV() {
+  const sym = document.getElementById('chart-symbol-sel').value;
+  try {
+    const res = await fetch(API + '/market/ohlcv/' + sym + '?bars=60');
+    const json = await res.json();
+    renderOHLCV(json.bars || []);
+  } catch (e) {
+    console.error('OHLCV load failed:', e);
+  }
+}
+
+function renderOHLCV(bars) {
+  const ctx = document.getElementById('ohlcv-chart').getContext('2d');
+  if (state.ohlcvChart) state.ohlcvChart.destroy();
+
+  // Build line chart from close prices (simpler without financial plugin dependency issues)
+  const labels = bars.map(b => {
+    const d = new Date(b.timestamp * 1000);
+    return d.toISOString().slice(11, 16);
+  });
+  const closes = bars.map(b => b.close);
+  const highs  = bars.map(b => b.high);
+  const lows   = bars.map(b => b.low);
+
+  const first = closes[0] || 0;
+  const last  = closes[closes.length - 1] || 0;
+  const up    = last >= first;
+  const color = up ? '#22c55e' : '#ef4444';
+
+  state.ohlcvChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Close',
+          data: closes,
+          borderColor: color,
+          backgroundColor: color + '18',
+          borderWidth: 1.5,
+          fill: true,
+          tension: 0.2,
+          pointRadius: 0,
+        },
+        {
+          label: 'High',
+          data: highs,
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1,
+          fill: false,
+          tension: 0.2,
+          pointRadius: 0,
+        },
+        {
+          label: 'Low',
+          data: lows,
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1,
+          fill: false,
+          tension: 0.2,
+          pointRadius: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 300 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#161e2e',
+          borderColor: '#1e2a3d',
+          borderWidth: 1,
+          titleFont: { family: 'JetBrains Mono', size: 11 },
+          bodyFont: { family: 'JetBrains Mono', size: 11 },
+          callbacks: {
+            label: ctx => ' ' + ctx.dataset.label + ': $' + ctx.parsed.y.toFixed(2),
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#4b5e78', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 },
+          grid: { color: 'rgba(30,42,61,0.5)' },
+        },
+        y: {
+          position: 'right',
+          ticks: { color: '#4b5e78', font: { family: 'JetBrains Mono', size: 9 }, callback: v => '$' + v.toFixed(2) },
+          grid: { color: 'rgba(30,42,61,0.5)' },
+        },
+      },
+    },
+  });
+}
+
+document.getElementById('chart-symbol-sel').addEventListener('change', loadOHLCV);
+
+// ─── Trades ───────────────────────────────────────────────────────────────
+async function loadTrades() {
+  try {
+    const res = await fetch(API + '/trades');
+    state.trades = await res.json();
+    renderTradesTable();
+  } catch (e) {
+    document.getElementById('trades-body').innerHTML =
+      '<tr><td colspan="8" class="empty-state">Failed to load trades</td></tr>';
+  }
+}
+
+function renderTradesTable() {
+  const tbody = document.getElementById('trades-body');
+  if (!state.trades.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No trades yet. Click + New Trade to add one.</td></tr>';
+    return;
+  }
+
+  const sorted = [...state.trades].sort((a, b) => {
+    let av = a[state.sortKey], bv = b[state.sortKey];
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return state.sortAsc ? -1 : 1;
+    if (av > bv) return state.sortAsc ? 1 : -1;
+    return 0;
+  });
+
+  tbody.innerHTML = sorted.map(t => {
+    const pnlCls = t.pnl >= 0 ? 'pos' : 'neg';
+    const pnlSign = t.pnl >= 0 ? '+' : '';
+    return `<tr data-id="${t.id}" onclick="onTradeRowClick(${t.id})">
+      <td class="num">${t.symbol}</td>
+      <td class="num dir-${t.direction}">${t.direction.toUpperCase()}</td>
+      <td class="num">${t.asset_class}</td>
+      <td class="num">$${fmtN(t.entry_price,2)}</td>
+      <td class="num">${t.current_price ? '$'+fmtN(t.current_price,2) : '—'}</td>
+      <td class="num ${pnlCls}">${pnlSign}$${fmtN(Math.abs(t.pnl),2)}</td>
+      <td class="num ${pnlCls}">${pnlSign}${fmtN(Math.abs(t.pnl_pct),2)}%</td>
+      <td><span class="status-pill status-${t.status}">${t.status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function sortTable(key) {
+  if (state.sortKey === key) state.sortAsc = !state.sortAsc;
+  else { state.sortKey = key; state.sortAsc = true; }
+  renderTradesTable();
+}
+
+function onTradeRowClick(id) {
+  const trade = state.trades.find(t => t.id === id);
+  if (!trade) return;
+
+  document.querySelectorAll('#trades-body tr').forEach(r => r.classList.remove('selected'));
+  document.querySelector(`#trades-body tr[data-id="${id}"]`)?.classList.add('selected');
+
+  if (trade.asset_class === 'option') {
+    loadTradeGreeks(id, trade);
+  } else {
+    closeGreeks();
+  }
+}
+
+async function loadTradeGreeks(id, trade) {
+  try {
+    const res = await fetch(API + '/risk/greeks/trade/' + id);
+    const data = await res.json();
+    showGreeks(data, trade);
+  } catch (e) {
+    closeGreeks();
+  }
+}
+
+function showGreeks(data, trade) {
+  document.getElementById('greeks-panel').classList.add('open');
+  document.getElementById('g-symbol').textContent = data.symbol;
+  document.getElementById('g-strike').textContent = '$' + (data.strike || '—');
+  document.getElementById('g-expiry').textContent = data.expiry || '—';
+  document.getElementById('g-delta').textContent = fmtN(data.delta, 4);
+  document.getElementById('g-gamma').textContent = fmtN(data.gamma, 6);
+  document.getElementById('g-theta').textContent = fmtN(data.theta, 4);
+  document.getElementById('g-vega').textContent  = fmtN(data.vega, 4);
+  document.getElementById('g-rho').textContent   = fmtN(data.rho, 4);
+  document.getElementById('g-iv').textContent    = (data.iv * 100).toFixed(1) + '%';
+  document.getElementById('g-pnl').textContent   = '$' + fmtN(trade.pnl, 2);
+  const pnlEl = document.getElementById('g-pnl');
+  pnlEl.className = 'greek-val ' + (trade.pnl >= 0 ? 'pos' : 'neg');
+}
+
+function closeGreeks() {
+  document.getElementById('greeks-panel').classList.remove('open');
+}
+
+// ─── Trade Modal ──────────────────────────────────────────────────────────
+function openTradeModal() {
+  document.getElementById('trade-modal').classList.add('open');
+}
+function closeTradeModal() {
+  document.getElementById('trade-modal').classList.remove('open');
+  document.getElementById('trade-form').reset();
+  setDirection('long');
+  toggleOptionsFields();
+}
+function setDirection(dir) {
+  state.direction = dir;
+  document.getElementById('dir-long').className  = 'active long'  + (dir === 'long'  ? ' active long'  : '');
+  document.getElementById('dir-short').className = 'active short' + (dir === 'short' ? ' active short' : '');
+  document.getElementById('dir-long').className  = dir === 'long'  ? 'active long'  : '';
+  document.getElementById('dir-short').className = dir === 'short' ? 'active short' : '';
+}
+function toggleOptionsFields() {
+  const isOpt = document.getElementById('f-asset-class').value === 'option';
+  ['f-strike-group','f-expiry-group','f-opttype-group'].forEach(id => {
+    document.getElementById(id).style.display = isOpt ? 'flex' : 'none';
+  });
+}
+async function submitTrade(e) {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Submitting…';
+
+  const isOpt = document.getElementById('f-asset-class').value === 'option';
+  const body = {
+    symbol: document.getElementById('f-symbol').value.toUpperCase(),
+    asset_class: document.getElementById('f-asset-class').value,
+    direction: state.direction,
+    entry_price: parseFloat(document.getElementById('f-entry').value),
+    quantity: parseFloat(document.getElementById('f-qty').value),
+  };
+  const stop = document.getElementById('f-stop').value;
+  const tp   = document.getElementById('f-tp').value;
+  if (stop) body.stop_loss   = parseFloat(stop);
+  if (tp)   body.take_profit = parseFloat(tp);
+  if (isOpt) {
+    body.strike      = parseFloat(document.getElementById('f-strike').value);
+    body.expiry      = document.getElementById('f-expiry').value;
+    body.option_type = document.getElementById('f-opttype').value;
+  }
+
+  try {
+    const res = await fetch(API + '/trades', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    closeTradeModal();
+    loadTrades();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit Trade';
+  }
+}
+
+// ─── Options Chain ────────────────────────────────────────────────────────
+async function loadOptionsChain() {
+  const sym = document.getElementById('opt-symbol-sel').value;
+  const chainEl = document.getElementById('options-chain');
+  chainEl.innerHTML = `
+    <div class="chain-header" style="text-align:right">Calls</div>
+    <div class="chain-header" style="text-align:center">Strike</div>
+    <div class="chain-header">Puts</div>
+    <div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text3);font-family:var(--mono)">
+      <span class="spinner"></span> Loading…
+    </div>`;
+
+  try {
+    const res = await fetch(API + '/market/options/' + sym + '?expiries=3&strikes=7');
+    const json = await res.json();
+    state.optionsData = json.contracts || [];
+    populateExpirySelector();
+    renderChain();
+  } catch (e) {
+    chainEl.innerHTML += `<div style="grid-column:1/-1;color:var(--red);text-align:center;padding:20px;font-family:var(--mono)">Failed to load chain</div>`;
+  }
+}
+
+function populateExpirySelector() {
+  const expiries = [...new Set(state.optionsData.map(c => c.expiry))].sort();
+  const sel = document.getElementById('opt-expiry-sel');
+  sel.innerHTML = '<option value="">All Expiries</option>' +
+    expiries.map(e => `<option value="${e}">${e}</option>`).join('');
+  state.optionsExpiry = '';
+}
+
+function filterChainByExpiry() {
+  state.optionsExpiry = document.getElementById('opt-expiry-sel').value;
+  renderChain();
+}
+
+function renderChain() {
+  const chain = document.getElementById('options-chain');
+  chain.innerHTML = `
+    <div class="chain-header" style="text-align:right;padding:8px">CALLS &nbsp; Δ &nbsp; IV &nbsp; Bid/Ask</div>
+    <div class="chain-header" style="text-align:center">STRIKE</div>
+    <div class="chain-header">Bid/Ask &nbsp; IV &nbsp; Δ &nbsp; PUTS</div>`;
+
+  let contracts = state.optionsData;
+  if (state.optionsExpiry) contracts = contracts.filter(c => c.expiry === state.optionsExpiry);
+
+  // Group by expiry+strike
+  const strikeMap = {};
+  contracts.forEach(c => {
+    const key = c.expiry + '_' + c.strike;
+    if (!strikeMap[key]) strikeMap[key] = { strike: c.strike, expiry: c.expiry };
+    strikeMap[key][c.type] = c;
+  });
+
+  // Sort by strike
+  const rows = Object.values(strikeMap).sort((a, b) => a.strike - b.strike);
+  const spot = contracts[0]?.spot || 0;
+
+  rows.forEach(row => {
+    const call = row.call;
+    const put  = row.put;
+    const itmCall = spot > row.strike;
+    const itmPut  = spot < row.strike;
+
+    const callHtml = call
+      ? `<span class="num">${fmtN(call.delta,2)} &nbsp; ${(call.iv*100).toFixed(0)}% &nbsp; ${fmtN(call.bid,2)}/${fmtN(call.ask,2)}</span>`
+      : '—';
+    const putHtml = put
+      ? `<span class="num">${fmtN(put.bid,2)}/${fmtN(put.ask,2)} &nbsp; ${(put.iv*100).toFixed(0)}% &nbsp; ${fmtN(put.delta,2)}</span>`
+      : '—';
+
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'chain-row';
+    rowDiv.innerHTML = `
+      <div class="chain-call ${itmCall ? 'itm-call' : ''}" style="text-align:right">${callHtml}</div>
+      <div class="chain-strike" style="text-align:center">${fmtN(row.strike,0)}</div>
+      <div class="chain-put ${itmPut ? 'itm-put' : ''}">${putHtml}</div>`;
+
+    rowDiv.querySelectorAll('.chain-call, .chain-put').forEach((cell, i) => {
+      cell.style.cursor = 'pointer';
+      cell.addEventListener('click', () => {
+        const contract = i === 0 ? call : put;
+        if (contract) onContractClick(contract, row.strike);
+      });
+    });
+
+    chain.appendChild(rowDiv);
+  });
+}
+
+function onContractClick(contract, strike) {
+  state.selectedChain = contract;
+  renderDecayChart(contract);
+}
+
+function renderDecayChart(c) {
+  const placeholder = document.getElementById('decay-placeholder');
+  const canvas = document.getElementById('decay-chart');
+  placeholder.style.display = 'none';
+  canvas.style.display = 'block';
+
+  // Approximate decay curve from theta and time using linear extrapolation
+  // (No server call — pure client-side math approximation)
+  const T = c.T_years || 0.25;
+  const steps = 30;
+  const labels = [];
+  const prices = [];
+  const thetas = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const frac = i / steps;
+    const t_remaining = T * (1 - frac);
+    const days = Math.round(t_remaining * 365);
+    labels.push(days + 'd');
+
+    // Simplified theta decay: price decreases faster as expiry approaches
+    // Using sqrt-of-time approximation (real BS would require full recalc)
+    const decay_factor = Math.sqrt(t_remaining / T);
+    const approx_price = c.mid * decay_factor;
+    prices.push(Math.max(0, approx_price));
+    thetas.push(c.theta * (1 / Math.max(0.1, decay_factor)));
+  }
+  labels.reverse(); prices.reverse();
+
+  if (state.decayChart) state.decayChart.destroy();
+  const ctx = canvas.getContext('2d');
+  state.decayChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Option Price',
+        data: prices,
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245,158,11,0.1)',
+        borderWidth: 1.5,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#161e2e',
+          titleFont: { family: 'JetBrains Mono', size: 10 },
+          bodyFont:  { family: 'JetBrains Mono', size: 10 },
+          callbacks: { label: ctx => ' $' + ctx.parsed.y.toFixed(3) },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#4b5e78', font: { family: 'JetBrains Mono', size: 8 }, maxTicksLimit: 6 },
+          grid: { color: 'rgba(30,42,61,0.5)' },
+        },
+        y: {
+          position: 'right',
+          ticks: { color: '#4b5e78', font: { family: 'JetBrains Mono', size: 9 }, callback: v => '$'+v.toFixed(2) },
+          grid: { color: 'rgba(30,42,61,0.5)' },
+        },
+      },
+    },
+  });
+}
+
+// ─── Formatters ───────────────────────────────────────────────────────────
+function fmtN(n, decimals = 2) {
+  if (n === null || n === undefined) return '—';
+  return Number(n).toFixed(decimals);
+}
+function fmt(n) {
+  if (n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtPrice(n) {
+  if (!n) return '—';
+  if (n >= 1000) return '$' + Number(n).toFixed(2);
+  if (n >= 10)   return '$' + Number(n).toFixed(2);
+  return '$' + Number(n).toFixed(4);
+}
+
+// ─── Poll fallback for KPIs ───────────────────────────────────────────────
+// SSE streams are preferred, but if they fail we poll every 15s
+async function pollPortfolio() {
+  try {
+    const res = await fetch(API + '/risk/portfolio');
+    if (res.ok) { updateKPIs(await res.json()); setBadge('sim'); }
+  } catch (_) {}
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────
+(async function init() {
+  startClock();
+  renderTickerStrip();
+
+  // Try SSE first, fall back to polling
+  try {
+    connectPortfolioSSE();
+    connectAlertSSE();
+    connectPriceSSE();
+  } catch (e) {
+    console.warn('SSE unavailable, using polling');
+  }
+
+  // Poll immediately and then every 15s as fallback
+  await pollPortfolio();
+  setInterval(pollPortfolio, 15_000);
+
+  // Reload OHLCV every 30s
+  loadOHLCV();
+  setInterval(() => {
+    if (state.activePanel === 'market') loadOHLCV();
+  }, 30_000);
+
+  // Reload trades every 10s if on trades panel
+  setInterval(() => {
+    if (state.activePanel === 'trades') loadTrades();
+  }, 10_000);
+})();
+</script>
+</body>
+</html>
